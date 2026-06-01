@@ -1,37 +1,120 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Xweather Map</title>
-    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
-
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.js"></script>
     
-	<style>
-    #map { 
-        width: 600px; 
-        height: 500px; 
-    }
-	</style>
+    <!-- AerisWeather SDK -->
+    <script src="https://cdn.aerisapi.com/sdk/js/latest/aerisweather.min.js"></script>
+    
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        
+        /* Map container adapted for full screen viewing */
+        #map {
+            height: 100vh;
+            width: 100vw;
+            z-index: 1; 
+        }
+
+        /* Floating UI Panel */
+        .info-panel {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+            background-color: rgba(255, 255, 255, 0.9);
+        }
+    </style>
 </head>
 <body>
 
-    <div id="map"></div>
-    
-	<script> 
-        var map = L.map('map').setView([37.21283151445594, -86.748046875], 6);
+    <!-- Error Banner for Rate Limiting -->
+    <div id="rate-limit-banner" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 z-[2000] bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-lg max-w-md w-full">
+        <div class="flex items-center">
+            <svg class="h-6 w-6 text-red-500 mr-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+                <p class="font-bold">API Quota Exceeded (Error 429)</p>
+                <p class="text-sm">The provided Xweather API keys have reached their request limit. Please update the keys in the code to restore functionality.</p>
+            </div>
+        </div>
+    </div>
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    		attribution: '&copy; OpenStreetMap contributors'
-		}).addTo(map);
-    
-        L.tileLayer('https://maps{s}.aerisapi.com/q3WCR8cdajh1jYa6gcYyk_UB3WbZYHWFsHfrVniK39h6o6f1f8xDCs0IFceETj/blue-marble,lightning-flash,stormcells,roads,admin-cities-dk/{z}/{x}/{y}/current.png', {
-			subdomains: '1234',
-			attribution: '<a href="https://www.aerisweather.com/">&copy;Xweather</a>',
-		}).addTo(map);
-    
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- Floating Information Panel -->
+    <div class="info-panel p-5 rounded-xl shadow-xl max-w-sm border border-gray-200">
+        <h1 class="text-xl font-bold text-gray-800 mb-2">Xweather Viewer</h1>
+        <p class="text-sm text-gray-600 mb-4 leading-relaxed">
+            Live interactive weather map powered by the AerisWeather API.
+        </p>
+        
+        <div class="bg-gray-100 rounded-lg p-3">
+            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Active Layers</h2>
+            <ul class="text-sm font-medium text-blue-600 space-y-1">
+                <li class="flex items-center"><span class="w-2 h-2 rounded-full bg-blue-500 mr-2"></span> Blue Marble Base</li>
+                <li class="flex items-center"><span class="w-2 h-2 rounded-full bg-yellow-500 mr-2"></span> Lightning Flashes</li>
+                <li class="flex items-center"><span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span> Storm Cells</li>
+                <li class="flex items-center"><span class="w-2 h-2 rounded-full bg-gray-500 mr-2"></span> Roads & Cities</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Xweather Initializer Script -->
+    <script>
+        // Global error handler to catch API limits (429 Too Many Requests)
+        function checkRateLimitError(msg) {
+            if (msg && (msg.includes('429') || msg.includes('Too Many Requests'))) {
+                document.getElementById('rate-limit-banner').classList.remove('hidden');
+            }
+        }
+
+        // Catch unhandled promise rejections (often used by Axios/Fetch in SDKs)
+        window.addEventListener('unhandledrejection', (event) => {
+            const errorMsg = event.reason ? (event.reason.message || String(event.reason)) : '';
+            checkRateLimitError(errorMsg);
+        });
+
+        // Intercept console errors as a fallback mechanism for the Aeris SDK
+        const originalConsoleError = console.error;
+        console.error = function(...args) {
+            checkRateLimitError(args.join(' '));
+            originalConsoleError.apply(console, args);
+        };
+
+        window.onload = () => {
+            try {
+                // Initialize AerisWeather SDK
+                const aeris = new AerisWeather('q3WCR8cdajh1jYa6gcYyk', 'UB3WbZYHWFsHfrVniK39h6o6f1f8xDCs0IFceETj');
+                aeris.views().then(views => {
+                    const map = new views.InteractiveMap(document.getElementById('map'), {
+                        center: {
+                            lat: 37.21283151445594,
+                            lon: -86.748046875
+                        },
+                        zoom: 6,
+                        layers: 'blue-marble,lightning-flash,stormcells,roads,admin-cities-dk'
+                    });
+                }).catch(err => {
+                    checkRateLimitError(err.message || String(err));
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        };
     </script>
-    
 </body>
 </html>
