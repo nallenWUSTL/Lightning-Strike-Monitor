@@ -1,254 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vaisala XWeather Map Integration</title>
+    <meta charset="utf-8" />
+    <title>Xweather Map</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.js"></script>
     
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f3f4f6;
-        }
-        
-        #map {
-            width: 100%;
-            height: 100vh;
-        }
-
-        .config-overlay {
-            position: absolute;
-            top: 20px;
-            left: 50px; /* Offset to not cover zoom controls */
-            z-index: 1000;
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-            max-width: 320px;
-            border-left: 5px solid #005fcc; /* XWeather brand blue */
-        }
-
-        .config-overlay h3 {
-            margin-top: 0;
-            margin-bottom: 10px;
-            font-size: 1.1rem;
-            color: #1f2937;
-        }
-
-        .config-overlay p {
-            font-size: 0.9rem;
-            color: #4b5563;
-            line-height: 1.4;
-            margin-bottom: 0;
-        }
-
-        .config-overlay code {
-            background-color: #f1f5f9;
-            padding: 2px 4px;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            color: #ef4444;
-        }
-    </style>
+	<style>
+    #map { 
+        width: 600px; 
+        height: 500px; 
+    }
+	</style>
 </head>
 <body>
 
-    <!-- Instructional Overlay -->
-    <div class="config-overlay" id="instructionBox">
-        <h3>XWeather Map Integration</h3>
-        <p>To view the weather layers, open the code and replace <code>YOUR_CLIENT_ID_HERE</code> and <code>YOUR_CLIENT_SECRET_HERE</code> with your actual Vaisala XWeather API keys.</p>
-    </div>
-
-    <!-- Map Container -->
     <div id="map"></div>
-
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     
-    <script>
-        // Ensure the DOM is fully loaded before accessing the map container
-        document.addEventListener("DOMContentLoaded", function() {
-            // ==========================================
-            // 1. CONFIGURATION
-            // ==========================================
-            const XWEATHER_CLIENT_ID = 'q3WCR8cdajh1jYa6gcYyk';
-            const XWEATHER_CLIENT_SECRET = 'UB3WbZYHWFsHfrVniK39h6o6f1f8xDCs0IFceETj';
+	<script> 
+        var map = L.map('map').setView([37.21283151445594, -86.748046875], 6);
 
-            // Hide the instruction box safely if keys are configured
-            const instructionBox = document.getElementById('instructionBox');
-            if (instructionBox && XWEATHER_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
-                instructionBox.style.display = 'none';
-            }
-
-            // ==========================================
-            // 2. INITIALIZE MAP (Centered on St. Louis, MO)
-            // ==========================================
-            const map = L.map('map').setView([38.6270, -90.1994], 5);
-
-            // Standard OpenStreetMap base layer
-            const baseMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                maxZoom: 19
-            }).addTo(map);
-
-            // ==========================================
-            // 3. RASTER TILE LAYER ENDPOINT (e.g., Radar)
-            // ==========================================
-            const tileEndpoint = `https://maps.api.xweather.com/${XWEATHER_CLIENT_ID}_${XWEATHER_CLIENT_SECRET}/radar/{z}/{x}/{y}/current.png`;
-            
-            const radarLayer = L.tileLayer(tileEndpoint, {
-                subdomains: '1234',
-                attribution: '&copy; Vaisala XWeather',
-                opacity: 0.65 // Makes the radar slightly transparent over the map
-            });
-
-            // ==========================================
-            // 4. GEOJSON DATA ENDPOINT (Active Alerts)
-            // ==========================================
-            const alertsLayer = L.geoJSON(null, {
-                style: function(feature) {
-                    return {
-                        color: "#ef4444", 
-                        weight: 2,
-                        opacity: 0.8,
-                        fillOpacity: 0.25
-                    };
-                },
-                onEachFeature: function(feature, layer) {
-                    if (feature.properties && feature.properties.details) {
-                        const title = feature.properties.details.name || 'Weather Alert';
-                        const body = feature.properties.details.body || 'No details available.';
-                        layer.bindPopup(`
-                            <div style="max-height: 200px; overflow-y: auto;">
-                                <strong>${title}</strong><br/><br/>
-                                <span style="font-size: 0.85rem;">${body}</span>
-                            </div>
-                        `);
-                    }
-                }
-            });
-
-            // ==========================================
-            // 5. Lightning Data Layer
-            // ==========================================
-            const lightningLayer = L.geoJSON(null, {
-                pointToLayer: function (feature, latlng) {
-                    return L.circleMarker(latlng, {
-                        radius: 5,
-                        fillColor: "#fbbf24",
-                        color: "#b45309",
-                        weight: 1,
-                        opacity: 1,
-                        fillOpacity: 0.9
-                    });
-                },
-                onEachFeature: function(feature, layer) {
-                    const time = feature.properties.ob?.dateTimeISO || feature.properties.dateTimeISO || 'Recent';
-                    layer.bindPopup(`<strong>⚡ Lightning Strike</strong><br/>Recorded: ${time}`);
-                }
-            });
-
-            // ==========================================
-            // 6. Roadweather Layer (Local)
-            // ==========================================
-            const roadWeatherLayer = L.geoJSON(null, {
-                style: function(feature) {
-                    return {
-                        color: "#8b5cf6", 
-                        weight: 5,
-                        opacity: 0.8
-                    };
-                },
-                pointToLayer: function (feature, latlng) {
-                    return L.circleMarker(latlng, { radius: 6, fillColor: "#8b5cf6", color: "#fff", weight: 2, fillOpacity: 1 });
-                },
-                onEachFeature: function(feature, layer) {
-                    const details = feature.properties;
-                    if (details) {
-                        const temp = details.ob?.tempC !== undefined ? `${details.ob.tempC}°C` : 'N/A';
-                        const roadCond = details.ob?.roadCondition || 'Normal';
-                        layer.bindPopup(`
-                            <strong>🚗 Road Weather Segment</strong><br/>
-                            Condition: ${roadCond}<br/>
-                            Air Temp: ${temp}
-                        `);
-                    }
-                }
-            });
-
-            // Function to fetch the endpoint
-            async function fetchGeoJSONEndpoint() {
-                if (XWEATHER_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') return;
-
-                const authParams = `client_id=${XWEATHER_CLIENT_ID}&client_secret=${XWEATHER_CLIENT_SECRET}`;
-                const searchLocation = "st+louis,mo";
-                const searchRadius = "100miles";
-
-                const alertsUrl = `https://data.api.xweather.com/alerts/${searchLocation}?radius=${searchRadius}&limit=100&format=geojson&${authParams}`;
-                const lightningUrl = `https://data.api.xweather.com/lightning/${searchLocation}?radius=${searchRadius}&limit=500&format=geojson&${authParams}`;
-                const roadweatherUrl = `https://data.api.xweather.com/roadweather/${searchLocation}?radius=${searchRadius}&limit=250&format=geojson&${authParams}`;
-
-                try {
-                    const [alertsRes, lightningRes, roadRes] = await Promise.all([
-                        fetch(alertsUrl),
-                        fetch(lightningUrl),
-                        fetch(roadweatherUrl)
-                    ]);
-
-                    const alertsData = await alertsRes.json();
-                    if (alertsData.success) alertsLayer.addData(alertsData.response);
-
-                    const lightningData = await lightningRes.json();
-                    if (lightningData.success) lightningLayer.addData(lightningData.response);
-
-                    const roadData = await roadRes.json();
-                    if (roadData.success) roadWeatherLayer.addData(roadData.response);
-
-                } catch (error) {
-                    console.error("Failed to fetch from XWeather endpoints:", error);
-                }
-            }
-
-            // ==========================================
-            // 7. LAYER CONTROLS
-            // ==========================================
-            const overlayMaps = {
-                "XWeather Radar (Raster)": radarLayer,
-                "XWeather Alerts (GeoJSON)": alertsLayer,
-                "⚡ Lightning Strikes": lightningLayer,
-                "🚗 Roadweather (Local)": roadWeatherLayer
-            };
-
-            L.control.layers({"Base Map": baseMap}, overlayMaps, { collapsed: false }).addTo(map);
-
-            // Turn on key layers by default
-            radarLayer.addTo(map);
-            lightningLayer.addTo(map);
-            roadWeatherLayer.addTo(map);
-
-            // ==========================================
-            // 8. 100-Mile Radius Visual Boundary
-            // ==========================================
-            const searchArea = L.circle([38.6270, -90.1994], {
-                radius: 160934,
-                color: '#005fcc',
-                weight: 2,
-                fillOpacity: 0.05,
-                dashArray: '5, 5'
-            }).addTo(map);
-            searchArea.bindPopup("100-Mile Search Radius");
-            
-            map.fitBounds(searchArea.getBounds());
-
-            fetchGeoJSONEndpoint();
-        });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    		attribution: '&copy; OpenStreetMap contributors'
+		}).addTo(map);
+    
+        L.tileLayer('https://maps{s}.aerisapi.com/q3WCR8cdajh1jYa6gcYyk_UB3WbZYHWFsHfrVniK39h6o6f1f8xDCs0IFceETj/blue-marble,lightning-flash,stormcells,roads,admin-cities-dk/{z}/{x}/{y}/current.png', {
+			subdomains: '1234',
+			attribution: '<a href="https://www.aerisweather.com/">&copy;Xweather</a>',
+		}).addTo(map);
+    
     </script>
+    
 </body>
 </html>
