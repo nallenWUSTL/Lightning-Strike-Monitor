@@ -73,202 +73,182 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     
     <script>
-        // ==========================================
-        // 1. CONFIGURATION
-        // Replace these with your actual XWeather credentials
-        // ==========================================
-        const XWEATHER_CLIENT_ID = 'q3WCR8cdajh1jYa6gcYyk';
-        const XWEATHER_CLIENT_SECRET = 'UB3WbZYHWFsHfrVniK39h6o6f1f8xDCs0IFceETj';
+        // Ensure the DOM is fully loaded before accessing the map container
+        document.addEventListener("DOMContentLoaded", function() {
+            // ==========================================
+            // 1. CONFIGURATION
+            // ==========================================
+            const XWEATHER_CLIENT_ID = 'q3WCR8cdajh1jYa6gcYyk';
+            const XWEATHER_CLIENT_SECRET = 'UB3WbZYHWFsHfrVniK39h6o6f1f8xDCs0IFceETj';
 
-';
+            // Hide the instruction box safely if keys are configured
+            const instructionBox = document.getElementById('instructionBox');
+            if (instructionBox && XWEATHER_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
+                instructionBox.style.display = 'none';
+            }
 
-        // Hide the instruction box if keys are configured
-        if (XWEATHER_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
-            document.getElementById('instructionBox').style.display = 'none';
-        }
+            // ==========================================
+            // 2. INITIALIZE MAP (Centered on St. Louis, MO)
+            // ==========================================
+            const map = L.map('map').setView([38.6270, -90.1994], 5);
 
-        // ==========================================
-        // 2. INITIALIZE MAP (Centered on St. Louis, MO)
-        // ==========================================
-        const map = L.map('map').setView([38.6270, -90.1994], 5);
+            // Standard OpenStreetMap base layer
+            const baseMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
 
-        // Standard OpenStreetMap base layer
-        const baseMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            maxZoom: 19
-        }).addTo(map);
+            // ==========================================
+            // 3. RASTER TILE LAYER ENDPOINT (e.g., Radar)
+            // ==========================================
+            const tileEndpoint = `https://maps.api.xweather.com/${XWEATHER_CLIENT_ID}_${XWEATHER_CLIENT_SECRET}/radar/{z}/{x}/{y}/current.png`;
+            
+            const radarLayer = L.tileLayer(tileEndpoint, {
+                subdomains: '1234',
+                attribution: '&copy; Vaisala XWeather',
+                opacity: 0.65 // Makes the radar slightly transparent over the map
+            });
 
-        // ==========================================
-        // 3. RASTER TILE LAYER ENDPOINT (e.g., Radar)
-        // Format: https://maps.api.xweather.com/[client_id]_[client_secret]/[layer]/[z]/[x]/[y]/[offset].[format]
-        // ==========================================
-        
-        // This is where you can swap 'radar' out for 'satellite', 'temperatures', etc. based on your endpoints
-        const tileEndpoint = `https://maps.api.xweather.com/${XWEATHER_CLIENT_ID}_${XWEATHER_CLIENT_SECRET}/radar/{z}/{x}/{y}/current.png`;
-        
-        const radarLayer = L.tileLayer(tileEndpoint, {
-            subdomains: '1234',
-            attribution: '&copy; Vaisala XWeather',
-            opacity: 0.65 // Makes the radar slightly transparent over the map
-        });
+            // ==========================================
+            // 4. GEOJSON DATA ENDPOINT (Active Alerts)
+            // ==========================================
+            const alertsLayer = L.geoJSON(null, {
+                style: function(feature) {
+                    return {
+                        color: "#ef4444", 
+                        weight: 2,
+                        opacity: 0.8,
+                        fillOpacity: 0.25
+                    };
+                },
+                onEachFeature: function(feature, layer) {
+                    if (feature.properties && feature.properties.details) {
+                        const title = feature.properties.details.name || 'Weather Alert';
+                        const body = feature.properties.details.body || 'No details available.';
+                        layer.bindPopup(`
+                            <div style="max-height: 200px; overflow-y: auto;">
+                                <strong>${title}</strong><br/><br/>
+                                <span style="font-size: 0.85rem;">${body}</span>
+                            </div>
+                        `);
+                    }
+                }
+            });
 
-        // ==========================================
-        // 4. GEOJSON DATA ENDPOINT (e.g., Active Alerts)
-        // Demonstrates how to pull point/polygon endpoints
-        // ==========================================
-        
-        const alertsLayer = L.geoJSON(null, {
-            style: function(feature) {
-                // Style the polygon warnings (e.g., red boxes for severe weather)
-                return {
-                    color: "#ef4444", 
-                    weight: 2,
-                    opacity: 0.8,
-                    fillOpacity: 0.25
-                };
-            },
-            onEachFeature: function(feature, layer) {
-                // Attach a popup when clicking an alert polygon
-                if (feature.properties && feature.properties.details) {
-                    const title = feature.properties.details.name || 'Weather Alert';
-                    const body = feature.properties.details.body || 'No details available.';
-                    layer.bindPopup(`
-                        <div style="max-height: 200px; overflow-y: auto;">
-                            <strong>${title}</strong><br/><br/>
-                            <span style="font-size: 0.85rem;">${body}</span>
-                        </div>
-                    `);
+            // ==========================================
+            // 5. Lightning Data Layer
+            // ==========================================
+            const lightningLayer = L.geoJSON(null, {
+                pointToLayer: function (feature, latlng) {
+                    return L.circleMarker(latlng, {
+                        radius: 5,
+                        fillColor: "#fbbf24",
+                        color: "#b45309",
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.9
+                    });
+                },
+                onEachFeature: function(feature, layer) {
+                    const time = feature.properties.ob?.dateTimeISO || feature.properties.dateTimeISO || 'Recent';
+                    layer.bindPopup(`<strong>⚡ Lightning Strike</strong><br/>Recorded: ${time}`);
+                }
+            });
+
+            // ==========================================
+            // 6. Roadweather Layer (Local)
+            // ==========================================
+            const roadWeatherLayer = L.geoJSON(null, {
+                style: function(feature) {
+                    return {
+                        color: "#8b5cf6", 
+                        weight: 5,
+                        opacity: 0.8
+                    };
+                },
+                pointToLayer: function (feature, latlng) {
+                    return L.circleMarker(latlng, { radius: 6, fillColor: "#8b5cf6", color: "#fff", weight: 2, fillOpacity: 1 });
+                },
+                onEachFeature: function(feature, layer) {
+                    const details = feature.properties;
+                    if (details) {
+                        const temp = details.ob?.tempC !== undefined ? `${details.ob.tempC}°C` : 'N/A';
+                        const roadCond = details.ob?.roadCondition || 'Normal';
+                        layer.bindPopup(`
+                            <strong>🚗 Road Weather Segment</strong><br/>
+                            Condition: ${roadCond}<br/>
+                            Air Temp: ${temp}
+                        `);
+                    }
+                }
+            });
+
+            // Function to fetch the endpoint
+            async function fetchGeoJSONEndpoint() {
+                if (XWEATHER_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') return;
+
+                const authParams = `client_id=${XWEATHER_CLIENT_ID}&client_secret=${XWEATHER_CLIENT_SECRET}`;
+                const searchLocation = "st+louis,mo";
+                const searchRadius = "100miles";
+
+                const alertsUrl = `https://data.api.xweather.com/alerts/${searchLocation}?radius=${searchRadius}&limit=100&format=geojson&${authParams}`;
+                const lightningUrl = `https://data.api.xweather.com/lightning/${searchLocation}?radius=${searchRadius}&limit=500&format=geojson&${authParams}`;
+                const roadweatherUrl = `https://data.api.xweather.com/roadweather/${searchLocation}?radius=${searchRadius}&limit=250&format=geojson&${authParams}`;
+
+                try {
+                    const [alertsRes, lightningRes, roadRes] = await Promise.all([
+                        fetch(alertsUrl),
+                        fetch(lightningUrl),
+                        fetch(roadweatherUrl)
+                    ]);
+
+                    const alertsData = await alertsRes.json();
+                    if (alertsData.success) alertsLayer.addData(alertsData.response);
+
+                    const lightningData = await lightningRes.json();
+                    if (lightningData.success) lightningLayer.addData(lightningData.response);
+
+                    const roadData = await roadRes.json();
+                    if (roadData.success) roadWeatherLayer.addData(roadData.response);
+
+                } catch (error) {
+                    console.error("Failed to fetch from XWeather endpoints:", error);
                 }
             }
-        });
 
-        // ==========================================
-        // NEW: Lightning Data Layer
-        // ==========================================
-        const lightningLayer = L.geoJSON(null, {
-            pointToLayer: function (feature, latlng) {
-                // Render lightning strikes as yellow circles
-                return L.circleMarker(latlng, {
-                    radius: 5,
-                    fillColor: "#fbbf24", // yellow
-                    color: "#b45309",     // dark orange border
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.9
-                });
-            },
-            onEachFeature: function(feature, layer) {
-                const time = feature.properties.ob?.dateTimeISO || feature.properties.dateTimeISO || 'Recent';
-                layer.bindPopup(`<strong>⚡ Lightning Strike</strong><br/>Recorded: ${time}`);
-            }
-        });
+            // ==========================================
+            // 7. LAYER CONTROLS
+            // ==========================================
+            const overlayMaps = {
+                "XWeather Radar (Raster)": radarLayer,
+                "XWeather Alerts (GeoJSON)": alertsLayer,
+                "⚡ Lightning Strikes": lightningLayer,
+                "🚗 Roadweather (Local)": roadWeatherLayer
+            };
 
-        // ==========================================
-        // NEW: Roadweather Layer (Route Action)
-        // ==========================================
-        const roadWeatherLayer = L.geoJSON(null, {
-            style: function(feature) {
-                // Give the route segments a noticeable thick purple line
-                return {
-                    color: "#8b5cf6", 
-                    weight: 5,
-                    opacity: 0.8
-                };
-            },
-            pointToLayer: function (feature, latlng) {
-                // If the endpoint returns point data along the route instead of lines
-                return L.circleMarker(latlng, { radius: 6, fillColor: "#8b5cf6", color: "#fff", weight: 2, fillOpacity: 1 });
-            },
-            onEachFeature: function(feature, layer) {
-                const details = feature.properties;
-                if (details) {
-                    const temp = details.ob?.tempC !== undefined ? `${details.ob.tempC}°C` : 'N/A';
-                    const roadCond = details.ob?.roadCondition || 'Normal';
-                    layer.bindPopup(`
-                        <strong>🚗 Road Weather Segment</strong><br/>
-                        Condition: ${roadCond}<br/>
-                        Air Temp: ${temp}
-                    `);
-                }
-            }
-        });
+            L.control.layers({"Base Map": baseMap}, overlayMaps, { collapsed: false }).addTo(map);
 
-        // Function to fetch the endpoint
-        async function fetchGeoJSONEndpoint() {
-            if (XWEATHER_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') return;
+            // Turn on key layers by default
+            radarLayer.addTo(map);
+            lightningLayer.addTo(map);
+            roadWeatherLayer.addTo(map);
 
-            const authParams = `client_id=${XWEATHER_CLIENT_ID}&client_secret=${XWEATHER_CLIENT_SECRET}`;
-            const searchLocation = "st+louis,mo";
-            const searchRadius = "100miles";
-
-            // 1. Fetch active weather alerts within 100 miles
-            const alertsUrl = `https://data.api.xweather.com/alerts/${searchLocation}?radius=${searchRadius}&limit=100&format=geojson&${authParams}`;
+            // ==========================================
+            // 8. 100-Mile Radius Visual Boundary
+            // ==========================================
+            const searchArea = L.circle([38.6270, -90.1994], {
+                radius: 160934,
+                color: '#005fcc',
+                weight: 2,
+                fillOpacity: 0.05,
+                dashArray: '5, 5'
+            }).addTo(map);
+            searchArea.bindPopup("100-Mile Search Radius");
             
-            // 2. Fetch lightning strikes within 100 miles
-            const lightningUrl = `https://data.api.xweather.com/lightning/${searchLocation}?radius=${searchRadius}&limit=500&format=geojson&${authParams}`;
-            
-            // 3. Fetch roadweather data within 100 miles (Using the ':id' action instead of route)
-            const roadweatherUrl = `https://data.api.xweather.com/roadweather/${searchLocation}?radius=${searchRadius}&limit=250&format=geojson&${authParams}`;
+            map.fitBounds(searchArea.getBounds());
 
-            try {
-                // Fetch all endpoints concurrently
-                const [alertsRes, lightningRes, roadRes] = await Promise.all([
-                    fetch(alertsUrl),
-                    fetch(lightningUrl),
-                    fetch(roadweatherUrl)
-                ]);
-
-                const alertsData = await alertsRes.json();
-                if (alertsData.success) alertsLayer.addData(alertsData.response);
-
-                const lightningData = await lightningRes.json();
-                if (lightningData.success) lightningLayer.addData(lightningData.response);
-
-                const roadData = await roadRes.json();
-                if (roadData.success) roadWeatherLayer.addData(roadData.response);
-
-            } catch (error) {
-                console.error("Failed to fetch from XWeather endpoints:", error);
-            }
-        }
-
-        // ==========================================
-        // 5. LAYER CONTROLS
-        // Allow users to toggle layers on and off
-        // ==========================================
-        const overlayMaps = {
-            "XWeather Radar (Raster)": radarLayer,
-            "XWeather Alerts (GeoJSON)": alertsLayer,
-            "⚡ Lightning Strikes": lightningLayer,
-            "🚗 Roadweather (Local)": roadWeatherLayer
-        };
-
-        L.control.layers({"Base Map": baseMap}, overlayMaps, { collapsed: false }).addTo(map);
-
-        // Turn on key layers by default
-        radarLayer.addTo(map);
-        lightningLayer.addTo(map);
-        roadWeatherLayer.addTo(map);
-
-        // ==========================================
-        // NEW: 100-Mile Radius Visual Boundary
-        // ==========================================
-        // 100 miles = ~160,934 meters
-        const searchArea = L.circle([38.6270, -90.1994], {
-            radius: 160934,
-            color: '#005fcc',
-            weight: 2,
-            fillOpacity: 0.05,
-            dashArray: '5, 5'
-        }).addTo(map);
-        searchArea.bindPopup("100-Mile Search Radius");
-        
-        // Adjust map view to fit the 100-mile circle perfectly
-        map.fitBounds(searchArea.getBounds());
-
-        // Fetch the GeoJSON data
-        fetchGeoJSONEndpoint();
-
+            fetchGeoJSONEndpoint();
+        });
     </script>
 </body>
 </html>
